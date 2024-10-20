@@ -52,7 +52,10 @@ def get_practice():
         url_down = 'https://op.itmo.ru/api/practice/?format=json&page=' + str(p)
         # dt = pendulum.now().to_iso8601_string()
         page = requests.get(url_down, headers=headers)
-        res = json.loads(page.text)['results']
+           try:
+            res = json.loads(page.text)['results']
+        except json.JSONDecodeError:
+            continue  # Пропуск текущей итерации, если не удалось распарсить JSON
         for r in res:
             df = pd.DataFrame([r], columns=r.keys())
             # df['academic_plan_in_field_of_study'] = df[~df['academic_plan_in_field_of_study'].isna()]["academic_plan_in_field_of_study"].apply(lambda st_dict: json.dumps(st_dict))
