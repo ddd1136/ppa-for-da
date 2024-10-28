@@ -1,7 +1,7 @@
 import pendulum
 from airflow import DAG
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python import PythonOperator
 
 def directions ():
     PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
@@ -124,30 +124,41 @@ def wp ():
     PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
     """
     INSERT INTO dds.wp (wp_id, discipline_code, wp_title, wp_status, unit_id, wp_description)
-    with wp_desc as (
-    select 
-        distinct json_array_elements(wp_in_academic_plan::json)->>'id' as wp_id,
-        json_array_elements(wp_in_academic_plan::json)->>'discipline_code' as discipline_code,
-        json_array_elements(wp_in_academic_plan::json)->>'description' as wp_description,
-        json_array_elements(wp_in_academic_plan::json)->>'status' as wp_status
-    from stg.work_programs wp),
-    wp_unit as (
-    select fak_id,
-        wp_list::json->>'id' as wp_id,
-        wp_list::json->>'title' as wp_title,
-        (wp_list::json->>'discipline_code') as discipline_code
-    from stg.su_wp sw)
-    select wp_desc.wp_id::integer, 
+    WITH wp_desc AS (
+        SELECT 
+            DISTINCT (json_array_elements(wp_in_academic_plan::json)->>'id')::integer AS wp_id,
+            json_array_elements(wp_in_academic_plan::json)->>'discipline_code' AS discipline_code,
+            json_array_elements(wp_in_academic_plan::json)->>'description' AS wp_description,
+            json_array_elements(wp_in_academic_plan::json)->>'status' AS wp_status
+        FROM stg.work_programs wp
+    ),
+    wp_unit AS (
+        SELECT fak_id,
+            (wp_list::json->>'id')::integer AS wp_id,
+            wp_list::json->>'title' AS wp_title,
+            wp_list::json->>'discipline_code' AS discipline_code
+        FROM stg.su_wp sw
+    )
+    SELECT 
+        wp_desc.wp_id, 
         wp_desc.discipline_code,
-        wp_unit.wp_title,
-        s.id as wp_status, 
-        wp_unit.fak_id as unit_id,
-        wp_desc.wp_description
-    from wp_desc
-    left join wp_unit
-    on wp_desc.discipline_code = wp_unit.discipline_code
-    left join dds.states s 
-    on wp_desc.wp_status = s.cop_state;
+        MAX(wp_unit.wp_title) AS wp_title,
+        s.id AS wp_status, 
+        MAX(wp_unit.fak_id) AS unit_id,
+        MAX(wp_desc.wp_description) AS wp_description
+    FROM wp_desc
+    LEFT JOIN wp_unit
+    ON wp_desc.discipline_code = wp_unit.discipline_code
+    LEFT JOIN dds.states s 
+    ON wp_desc.wp_status = s.cop_state
+    GROUP BY wp_desc.wp_id, wp_desc.discipline_code, s.id
+    ON CONFLICT (wp_id) DO UPDATE
+    SET 
+        discipline_code = EXCLUDED.discipline_code,
+        wp_title = EXCLUDED.wp_title,
+        wp_status = EXCLUDED.wp_status,
+        unit_id = EXCLUDED.unit_id,
+        wp_description = EXCLUDED.wp_description;
     """)
 
 def wp_inter ():

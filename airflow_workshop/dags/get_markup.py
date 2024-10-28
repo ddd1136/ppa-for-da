@@ -4,7 +4,7 @@ import pendulum
 import json
 from airflow import DAG
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 
 url = "https://op.itmo.ru/auth/token/login"

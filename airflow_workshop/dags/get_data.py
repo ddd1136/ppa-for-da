@@ -4,7 +4,7 @@ import pendulum
 import json
 from airflow import DAG
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 
 url = "https://op.itmo.ru/auth/token/login"
@@ -55,7 +55,7 @@ def get_practice():
         url_down = 'https://op.itmo.ru/api/practice/?format=json&page=' + str(p)
         # dt = pendulum.now().to_iso8601_string()
         page = requests.get(url_down, headers=headers)
-           try:
+        try:
             res = json.loads(page.text)['results']
         except json.JSONDecodeError:
             continue  # Пропуск текущей итерации, если не удалось распарсить JSON
