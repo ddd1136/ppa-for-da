@@ -1,279 +1,222 @@
 import pendulum
 from airflow import DAG
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.operators.python import PythonOperator
+from airflow.operators.python_operator import PythonOperator
 
-def directions ():
-    PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    INSERT INTO dds.directions (direction_id, direction_code, direction_name)
-    select distinct direction_id::integer, direction_code, direction_name from stg.up_description ud 
-    ON CONFLICT ON CONSTRAINT direction_code_uindex DO UPDATE 
-    SET 
-        direction_id = EXCLUDED.direction_id, 
-        direction_name = EXCLUDED.direction_name;
-    """)
 
-def levels ():
+def editors():
     PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    INSERT INTO dds.levels (training_period, level_name)
-    with t as (select distinct training_period from stg.up_description ud)
-    select training_period, 
-        case when training_period = '2'   then 'магистратура' 
-                when training_period = '4'   then 'бакалавриат'
-                else 'специалитет'
-        end as level_name
-    from t
-    ON CONFLICT ON CONSTRAINT level_name_uindex DO UPDATE 
-    SET 
-        training_period = EXCLUDED.training_period;
-    """)
-
-def editors ():
-    PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    INSERT INTO dds.editors (id, username, first_name, last_name, email, isu_number)
-    select distinct (json_array_elements(wp_list::json->'editors')::json->>'id')::integer as editor_id, 
-        (json_array_elements(wp_list::json->'editors')::json->>'username') as username,
-        (json_array_elements(wp_list::json->'editors')::json->>'first_name') as first_name,
-        (json_array_elements(wp_list::json->'editors')::json->>'last_name') as last_name,
-        (json_array_elements(wp_list::json->'editors')::json->>'email') as email,
-        (json_array_elements(wp_list::json->'editors')::json->>'isu_number') as isu_number
-    from stg.su_wp sw
-    ON CONFLICT ON CONSTRAINT editors_uindex DO UPDATE 
-    SET 
-        username = EXCLUDED.username, 
-        first_name = EXCLUDED.first_name,
-        last_name = EXCLUDED.last_name, 
-        email = EXCLUDED.email, 
-        isu_number = EXCLUDED.isu_number;
-    """)
-
-def states ():
-    PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    INSERT INTO dds.states (cop_state, state_name)
-    with t as (select distinct (json_array_elements(wp_in_academic_plan::json)->>'status') as cop_states from stg.work_programs wp)
-    select cop_states, 
-        case when cop_states ='AC' then 'одобрено' 
-                when cop_states ='AR' then 'архив'
-                when cop_states ='EX' then 'на экспертизе'
-                when cop_states ='RE' then 'на доработке'
-                else 'в работе'
-        end as state_name
-    from t
-    ON CONFLICT ON CONSTRAINT state_name_uindex DO UPDATE 
-    SET 
-        id = EXCLUDED.id, 
-        cop_state = EXCLUDED.cop_state;
-    """)
-
-def units ():
-    PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    INSERT INTO dds.units (id, unit_title, faculty_id)
-    select 
-        distinct sw.fak_id, 
-        sw.fak_title, 
-        ud.faculty_id::integer
-    from stg.su_wp sw 
-    left join stg.up_description ud 
-    on sw.fak_title = ud.faculty_name 
-    ON CONFLICT ON CONSTRAINT units_uindex DO UPDATE 
-    SET 
-        unit_title = EXCLUDED.unit_title, 
-        faculty_id = EXCLUDED.faculty_id;
-    """)
-
-def up ():
-    PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    truncate dds.up restart identity cascade;
-    """)
-    PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    INSERT INTO dds.up (id, plan_type, direction_id, ns_id, edu_program_id, edu_program_name, unit_id, level_id, university_partner, up_country, lang, military_department, selection_year)
-    select ud.id, 
-        ud.plan_type, 
-        d.direction_id,
-        ud.ns_id::integer,
-        ud.edu_program_id::integer,
-        ud.edu_program_name,
-        u.id as unit_id,
-        l.id as level_id,
-        ud.university_partner, 
-        ud.up_country, 
-        ud.lang, 
-        ud.military_department, 
-        ud.selection_year::integer
-    from stg.up_description ud 
-    left join dds.directions d 
-    on d.direction_code = ud.direction_code 
-    left join dds.units u 
-    on u.unit_title  = ud.faculty_name 
-    left join dds.levels l 
-    on ud.training_period = l.training_period 
-    """)
-
-def wp ():
-    PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    truncate dds.wp restart identity cascade;
-    """)
-    PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    INSERT INTO dds.wp (wp_id, discipline_code, wp_title, wp_status, unit_id, wp_description)
-    WITH wp_desc AS (
-        SELECT 
-            DISTINCT (json_array_elements(wp_in_academic_plan::json)->>'id')::integer AS wp_id,
-            json_array_elements(wp_in_academic_plan::json)->>'discipline_code' AS discipline_code,
-            json_array_elements(wp_in_academic_plan::json)->>'description' AS wp_description,
-            json_array_elements(wp_in_academic_plan::json)->>'status' AS wp_status
-        FROM stg.work_programs wp
-    ),
-    wp_unit AS (
-        SELECT fak_id,
-            (wp_list::json->>'id')::integer AS wp_id,
-            wp_list::json->>'title' AS wp_title,
-            wp_list::json->>'discipline_code' AS discipline_code
+        """
+        INSERT INTO dds.editors (id, username, first_name, last_name, email, isu_number)
+        SELECT DISTINCT (json_array_elements(wp_list::json->'editors')::json->>'id')::integer as editor_id, 
+            (json_array_elements(wp_list::json->'editors')::json->>'username') as username,
+            (json_array_elements(wp_list::json->'editors')::json->>'first_name') as first_name,
+            (json_array_elements(wp_list::json->'editors')::json->>'last_name') as last_name,
+            (json_array_elements(wp_list::json->'editors')::json->>'email') as email,
+            (json_array_elements(wp_list::json->'editors')::json->>'isu_number') as isu_number
         FROM stg.su_wp sw
+        ON CONFLICT ON CONSTRAINT editors_uindex DO UPDATE 
+        SET 
+            username = EXCLUDED.username, 
+            first_name = EXCLUDED.first_name,
+            last_name = EXCLUDED.last_name, 
+            email = EXCLUDED.email, 
+            isu_number = EXCLUDED.isu_number;
+        """)
+
+
+def states():
+    PostgresHook(postgres_conn_id="PG_WAREHOUSE_CONNECTION").run(
+        """
+        TRUNCATE dds.states RESTART IDENTITY CASCADE;
+        """
     )
-    SELECT 
-        wp_desc.wp_id, 
-        wp_desc.discipline_code,
-        MAX(wp_unit.wp_title) AS wp_title,
-        s.id AS wp_status, 
-        MAX(wp_unit.fak_id) AS unit_id,
-        MAX(wp_desc.wp_description) AS wp_description
-    FROM wp_desc
-    LEFT JOIN wp_unit
-    ON wp_desc.discipline_code = wp_unit.discipline_code
-    LEFT JOIN dds.states s 
-    ON wp_desc.wp_status = s.cop_state
-    GROUP BY wp_desc.wp_id, wp_desc.discipline_code, s.id
-    ON CONFLICT (wp_id) DO UPDATE
-    SET 
-        discipline_code = EXCLUDED.discipline_code,
-        wp_title = EXCLUDED.wp_title,
-        wp_status = EXCLUDED.wp_status,
-        unit_id = EXCLUDED.unit_id,
-        wp_description = EXCLUDED.wp_description;
-    """)
-
-def wp_inter ():
     PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    truncate dds.wp_editor restart identity cascade;
-    """)
+        """
+        INSERT INTO dds.states (cop_state, state_name)
+        WITH t AS (
+            SELECT DISTINCT (json_array_elements(wp_in_academic_plan::json)->>'status') as cop_states FROM stg.work_programs wp
+        )
+        SELECT cop_states, 
+            CASE 
+                WHEN cop_states = 'AC' THEN 'одобрено' 
+                WHEN cop_states = 'AR' THEN 'архив'
+                WHEN cop_states = 'EX' THEN 'на экспертизе'
+                WHEN cop_states = 'RE' THEN 'на доработке'
+                ELSE 'в работе'
+            END as state_name
+        FROM t
+        ON CONFLICT ON CONSTRAINT state_name_uindex DO UPDATE 
+        SET 
+            id = EXCLUDED.id, 
+            cop_state = EXCLUDED.cop_state;
+        """)
+
+
+def units():
     PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    truncate dds.wp_up restart identity cascade;
-    """)
+        """
+        INSERT INTO dds.units (id, unit_title, faculty_id)
+        SELECT DISTINCT sw.fak_id, 
+            sw.fak_title, 
+            ud.faculty_id::integer
+        FROM stg.su_wp sw 
+        LEFT JOIN stg.up_description ud 
+        ON sw.fak_title = ud.faculty_name 
+        ON CONFLICT ON CONSTRAINT units_uindex DO UPDATE 
+        SET 
+            unit_title = EXCLUDED.unit_title, 
+            faculty_id = EXCLUDED.faculty_id;
+        """)
+
+
+def up():
+    PostgresHook(postgres_conn_id="PG_WAREHOUSE_CONNECTION").run(
+        """
+        TRUNCATE dds.up RESTART IDENTITY CASCADE;
+        """
+    )
+    PostgresHook(postgres_conn_id="PG_WAREHOUSE_CONNECTION").run(
+        """
+        INSERT INTO dds.up (app_isu_id, on_check, laboriousness, year, qualification, update_ts, unit)
+        WITH up_desc AS (
+            SELECT DISTINCT edu_program_name, faculty_name FROM stg.up_description
+        ),
+        up_temp AS (
+            SELECT DISTINCT ON (up_det.ap_isu_id, DATE(up_det.update_ts)) up_det.ap_isu_id, 
+                   up_det.on_check, 
+                   up_det.laboriousness, 
+                   element.value->>'year' AS year,
+                   element.value->>'qualification' AS qualification,
+                   element.value->'structural_unit'->>'title' AS unit,
+                   element.value->>'title' AS title,
+                   up_det.update_ts
+            FROM stg.up_detail up_det
+            CROSS JOIN LATERAL json_array_elements(up_det.academic_plan_in_field_of_study::json) AS element(value)
+            WHERE up_det.ap_isu_id IS NOT NULL
+        )
+         SELECT DISTINCT ON (up_temp.ap_isu_id, DATE(up_temp.update_ts)) up_temp.ap_isu_id, 
+               up_temp.on_check, 
+               up_temp.laboriousness, 
+               up_temp.year::integer, 
+               up_temp.qualification, 
+               up_temp.update_ts,
+               COALESCE(up_temp.unit, up_desc.faculty_name) AS unit
+        FROM up_temp
+        LEFT JOIN up_desc ON up_temp.title = up_desc.edu_program_name;
+
+
+        """
+    )
+
+
+def wp():
     PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    INSERT INTO dds.wp_editor (wp_id, editor_id)
-    select (wp_list::json->>'id')::integer as wp_id,
-        (json_array_elements(wp_list::json->'editors')::json->>'id')::integer as editor_id
-    from stg.su_wp
-    """)
+        """
+        TRUNCATE dds.wp RESTART IDENTITY CASCADE;
+        """
+    )
     PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    INSERT INTO dds.wp_up (wp_id, up_id)
-    with t as (
-    select id,
-        (json_array_elements(wp_in_academic_plan::json)->>'id')::integer as wp_id,
-        json_array_elements(academic_plan_in_field_of_study::json)->>'ap_isu_id' as up_id
-    from stg.work_programs wp)
-    select t.wp_id, (json_array_elements(wp.academic_plan_in_field_of_study::json)->>'ap_isu_id')::integer as up_id from t
-    join stg.work_programs wp
-    on t.id = wp.id
-    """)
+        """
+        INSERT INTO dds.wp (wp_id, discipline_code, wp_title, wp_status, unit_id, wp_description, update_ts)
+        WITH wp_desc AS (
+            SELECT DISTINCT 
+                (json_array_elements(wp_in_academic_plan::json)->>'id')::integer as wp_id,
+                json_array_elements(wp_in_academic_plan::json)->>'discipline_code' as discipline_code,
+                json_array_elements(wp_in_academic_plan::json)->>'description' as wp_description,
+                json_array_elements(wp_in_academic_plan::json)->>'status' as wp_status,
+                valid_from::date as update_date -- Используем только дату без учета времени
+            FROM stg.work_programs wp
+        ),
+        wp_unit AS (
+            SELECT 
+                fak_id,
+                (wp_list::json->>'id')::integer as wp_id,
+                wp_list::json->>'title' as wp_title,
+                wp_list::json->>'discipline_code' as discipline_code
+            FROM stg.su_wp sw
+        ),
+        combined AS (
+            SELECT DISTINCT 
+                wp_desc.wp_id, 
+                wp_desc.discipline_code,
+                wp_unit.wp_title,
+                s.id as wp_status, 
+                wp_unit.fak_id as unit_id,
+                wp_desc.wp_description,
+                wp_desc.update_date,
+                ROW_NUMBER() OVER (PARTITION BY wp_desc.wp_id, wp_desc.update_date ORDER BY wp_desc.update_date DESC) AS row_num
+            FROM wp_desc
+            LEFT JOIN wp_unit
+            ON wp_desc.discipline_code = wp_unit.discipline_code
+            LEFT JOIN dds.states s 
+            ON wp_desc.wp_status = s.cop_state
+        )
+        SELECT wp_id, discipline_code, wp_title, wp_status, unit_id, wp_description, update_date AS update_ts
+        FROM combined
+        WHERE row_num = 1;
+        """
+    )
 
 
-def wp_markup ():
+
+def wp_inter():
     PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    insert into dds.wp_markup  (id, title, discipline_code, prerequisites, outcomes, prerequisites_cnt, outcomes_cnt)
-    select *, json_array_length(prerequisites::json), json_array_length(outcomes::json) from stg.wp_markup wm 
-    ON CONFLICT ON CONSTRAINT wp_id_uindex DO UPDATE 
-    SET 
-        title = EXCLUDED.title, 
-        discipline_code = EXCLUDED.discipline_code, 
-        prerequisites = EXCLUDED.prerequisites, 
-
-        outcomes = EXCLUDED.outcomes, 
-        prerequisites_cnt = EXCLUDED.prerequisites_cnt,
-        outcomes_cnt = EXCLUDED.outcomes_cnt;
-    """)
-
-def wp_online_sourse ():
+        """
+        TRUNCATE dds.wp_editor RESTART IDENTITY CASCADE;
+        """
+    )
     PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    truncate dds.online_courses restart identity cascade;
-    """)
-    PostgresHook(postgres_conn_id='PG_WAREHOUSE_CONNECTION').run(
-    """
-    insert into dds.online_courses 
-    (id, title, institution , discipline_code)
-    with t as (
-    select 
-    id,
-    title,
-    institution::json->>'title'::text as institution,
-    (((json_array_elements(topic_with_online_course::json)->>'discipline_section')::json)->>'work_program')::json->>'discipline_code' as discipline_code
-    from stg.online_courses oc),
-    t2 as (
-    select *, SUBSTRING(discipline_code, '([0-9]{1,6})')::integer as discipline_code_int from t)
-    select id, title, institution , discipline_code_int
-    from t2
-    group by id, title, institution, discipline_code_int
-    order by 1
-    """)
+        """
+        INSERT INTO dds.wp_editor (wp_id, editor_id, update_ts)
+        SELECT 
+            (wp_list::json->>'id')::integer AS wp_id,
+            (json_array_elements(wp_list::json->'editors')::json->>'id')::integer AS editor_id,
+            wp.update_ts
+        FROM 
+            stg.su_wp
+        JOIN 
+            (
+                SELECT wp_id, MAX(update_ts) AS update_ts
+                FROM dds.wp
+                GROUP BY wp_id
+            ) AS wp
+        ON 
+            (wp_list::json->>'id')::integer = wp.wp_id
+        WHERE 
+            (wp_list::json->>'id')::integer IN (SELECT wp_id FROM dds.wp);
+        """
+    )
 
-
-
-
-with DAG(dag_id='stg_to_dds', start_date=pendulum.datetime(2022, 1, 1, tz="UTC"), schedule_interval='0 4 * * *', catchup=False) as dag:
+with DAG(dag_id='stg_to_dds', start_date=pendulum.datetime(2024, 1, 1, tz="Europe/Moscow"), schedule_interval='0 4 * * *', catchup=False) as dag:
     t1 = PythonOperator(
-    task_id='directions',
-    python_callable=directions 
-    ) 
-    t2 = PythonOperator(
-    task_id='levels',
-    python_callable=levels 
-    ) 
-    t3 = PythonOperator(
-    task_id='editors',
-    python_callable=editors 
-    ) 
-    t4 = PythonOperator(
-    task_id='states',
-    python_callable=states 
-    ) 
-    t5 = PythonOperator(
-    task_id='units',
-    python_callable=units 
-    ) 
-    t6 = PythonOperator(
-    task_id='up',
-    python_callable=up 
-    ) 
-    t7 = PythonOperator(
-    task_id='wp',
-    python_callable=wp 
-    ) 
-    t8 = PythonOperator(
-    task_id='wp_inter',
-    python_callable=wp_inter 
-    ) 
-    t9 = PythonOperator(
-    task_id='wp_markup',
-    python_callable=wp_markup 
-    ) 
-    t10 = PythonOperator(
-    task_id='wp_online_sourse',
-    python_callable=wp_online_sourse 
-    ) 
+        task_id='editors',
+        python_callable=editors
+    )
 
-[t1, t2, t3, t4, t5] >> t6 >> t7 >> t8 >> [t9, t10]
+    t2 = PythonOperator(
+        task_id='states',
+        python_callable=states
+    )
+
+    t3 = PythonOperator(
+        task_id='units',
+        python_callable=units
+    )
+
+    t4 = PythonOperator(
+        task_id='up',
+        python_callable=up
+    )
+
+    t5 = PythonOperator(
+        task_id='wp',
+        python_callable=wp
+    )
+
+    t6 = PythonOperator(
+        task_id='wp_inter',
+        python_callable=wp_inter
+    )
+
+    t1 >> t2 >> t3 >> t4 >> t5 >> t6
