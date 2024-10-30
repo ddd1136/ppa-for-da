@@ -26,6 +26,7 @@ services:
     volumes:
       - mydb:/var/lib/postgresql
       - ${AIRFLOW_DAGS_DIR:-./dags}:/lessons/dags
+      - C:\Users\user\Desktop\ppa-for-da-master\data:/opt/airflow/data # Монтируем JSON-файлы
 
   metabase:
     image: metabase/metabase
