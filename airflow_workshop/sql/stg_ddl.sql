@@ -1,5 +1,9 @@
 create table stg.work_programs
 (id integer, academic_plan_in_field_of_study text, wp_in_academic_plan text, update_ts timestamp);
+ALTER TABLE stg.work_programs
+ADD COLUMN valid_from TIMESTAMP DEFAULT NOW(),
+ADD COLUMN valid_to TIMESTAMP DEFAULT '2999-12-31',
+ADD COLUMN is_current BOOLEAN DEFAULT TRUE;
 create table stg.up_description
 (id integer, plan_type text, direction_id text, ns_id text, direction_code text, direction_name text, edu_program_id text, edu_program_name text, 
 faculty_id text, faculty_name text, training_period text, university_partner text, up_country text, lang text, military_department boolean, total_intensity text, 
@@ -20,6 +24,8 @@ create table stg.disc_by_year
 (id integer, ap_isu_id integer, title text, work_programs text);
 create table stg.up_detail
 (id integer, ap_isu_id integer, on_check varchar(20), laboriousness integer, academic_plan_in_field_of_study text);
+ALTER TABLE stg.up_detail
+ADD COLUMN update_ts TIMESTAMP,
 create table stg.up_isu
 (id integer, plan_type text, direction_id text, ns_id text, direction_code text, direction_name text, edu_program_id text, edu_program_name text, 
 faculty_id text, faculty_name text, training_period text, university_partner text, up_country text, lang text, military_department boolean, total_intensity text, 
